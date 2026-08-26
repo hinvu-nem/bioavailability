@@ -21,18 +21,13 @@ parser.add_argument("--train", type=str, default='dataset/train_set.csv', help="
 parser.add_argument("--test", type=str, default='dataset/test_set.csv', help="Path to test dataset (csv format)")
 parser.add_argument("--target", type=str, default='bioavailability_percent')
 parser.add_argument("--id_col", type=str, default='compound_id')
-parser.add_argument("--categorical", type=str, default='formulation_type',
-                     help="Comma-separated list of categorical columns to one-hot encode")
-parser.add_argument("--zero_threshold", type=float, default=0.95,
-                     help="Drop a feature if one value makes up more than this fraction of rows")
-parser.add_argument("--correlation_threshold", type=float, default=0.90,
-                     help="Drop one of any pair of features correlated above this threshold")
+parser.add_argument("--categorical", type=str, default='formulation_type',help="Comma-separated list of categorical columns to one-hot encode")
+parser.add_argument("--zero_threshold", type=float, default=0.95,help="Drop a feature if one value makes up more than this fraction of rows")
+parser.add_argument("--correlation_threshold", type=float, default=0.90,help="Drop one of any pair of features correlated above this threshold")
 parser.add_argument("--model", type=str, default='xgb', help="xgb")
 parser.add_argument("--save_model", type=str, default='xgb_bioavailability_model')
-parser.add_argument("--save_plot", type=str, default='xgboost_results.png',
-                     help="File ảnh lưu biểu đồ feature importance + predicted vs actual")
-parser.add_argument("--top_n_features", type=int, default=15,
-                     help="Số lượng đặc trưng hiển thị trên biểu đồ importance")
+parser.add_argument("--save_plot", type=str, default='xgboost_results.png',help="pic file")
+parser.add_argument("--top_n_features", type=int, default=15,help="numbers of top features")
 
 args = parser.parse_args()
 
@@ -50,11 +45,10 @@ print(f'  | Test size: {len(test)}')
 print('\n')
 
 # Define target variables
-
 y_train = train[args.target]
 y_test = test[args.target]
 
-# one-hot encoded 
+# One-hot encoded 
 print('* one-hot encoded ')
 print('\n')
 
@@ -75,7 +69,6 @@ else:
     X_test_full = X_test_numeric
 
 # Apply feature selection
-
 print('* Apply features selection...')
 
 X_train_full_fil = remove_noise_columns(X_train_full, threshold=args.zero_threshold)
@@ -87,7 +80,6 @@ print(f'  | Features used: {list(X_train_full_fil.columns)}')
 print('\n')
 
 # Train model
-
 if args.model == 'xgb':
     with open('ml_config/xgboost_config.txt', 'r') as f:
         params = {k: convert_number(v) for k, v in (line.strip().split('=') for line in f if '=' in line)}
@@ -97,7 +89,7 @@ if args.model == 'xgb':
     model = XGBRegressor(**params)
     model_name = 'Extreme Gradient Boosting'
 else:
-    raise ValueError('This model does not provide other model')
+    raise ValueError('This version does not provide other model')
 print(f'Start training model {model_name} with following parameters:')
 
 print(tabulate(table_data, headers=["Parameter", "Value"], tablefmt="grid"))
@@ -138,7 +130,7 @@ data = [
 print(tabulate(data, headers=headers, tablefmt="grid"))
 print('\n')
 
-# Feature importance (XGB)
+# Feature importance 
 if args.model in ('xgb', 'rf'):
     importances = pd.Series(train_model.feature_importances_, index=X_train_full_fil.columns)
     importances = importances.sort_values(ascending=False)
@@ -147,33 +139,33 @@ if args.model in ('xgb', 'rf'):
                     headers=["Feature", "Importance"], tablefmt="grid"))
     print('\n')
 
-#Vẽ biểu đồ feature importance + predicted vs actual
+# Picture
 print('* Vẽ biểu đồ kết quả...')
 fig, axes = plt.subplots(1, 2, figsize=(14, 6))
  
-#Feature importance plot
+# Feature importance plot
 top_importance = importances.head(args.top_n_features).sort_values(ascending=True)
 top_importance.plot(kind="barh", ax=axes[0], color="#2E86AB")
 axes[0].invert_yaxis()
-axes[0].set_title(f"Tầm quan trọng đặc trưng ({model_name})")
-axes[0].set_xlabel("Importance (gain-based, mặc định weight)")
+axes[0].set_title(f"Feature importance ({model_name})")
+axes[0].set_xlabel("Importance (gain-based)")
  
-#5b. Predicted vs Actual (trên tập test)
+# Predict vs actual
 axes[1].scatter(y_test, y_test_hat, alpha=0.4, color="#A23B72", s=18)
 lims = [min(y_test.min(), y_test_hat.min()), max(y_test.max(), y_test_hat.max())]
-axes[1].plot(lims, lims, "k--", lw=1.5, label="Dự đoán hoàn hảo")
-axes[1].set_xlabel("Bioavailability thực tế (%)")
-axes[1].set_ylabel("Bioavailability dự đoán (%)")
-axes[1].set_title(f"Dự đoán vs Thực tế (R²={r2_test:.3f})")
+axes[1].plot(lims, lims, "k--", lw=1.5, label="Perfect prediction")
+axes[1].set_xlabel("Actual bioavailability(%)")
+axes[1].set_ylabel("Predict bioavailability(%)")
+axes[1].set_title(f"Predict and actual(R²={r2_test:.3f})")
 axes[1].legend()
  
 plt.tight_layout()
 plt.savefig(args.save_plot, dpi=150)
 plt.close(fig)
-print(f"Đã lưu biểu đồ: {args.save_plot}")
+print(f"Chart saved: {args.save_plot}")
 print('\n')
 
-
+# Save model
 print(f'Saving model to file name {args.save_model}.pkl')
 
 with open(f'{args.save_model}.pkl', 'wb') as model_file:

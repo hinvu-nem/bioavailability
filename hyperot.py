@@ -118,7 +118,7 @@ best_params = {
 best_rmse = min(trials.losses())
 
 print('\n')
-print(f'Bộ tham số tốt nhất (RMSE cross-validation = {best_rmse:.4f}):')
+print(f'Best hyperparameters = {best_rmse:.4f}):')
 print(tabulate([(k, v) for k, v in best_params.items()], headers=["Parameter", "Value"], tablefmt="grid"))
 print('\n')
 

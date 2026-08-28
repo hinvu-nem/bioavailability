@@ -5,10 +5,10 @@ from helper.preprocess_dataset import split_dataset, convert_number, encode_cate
 from helper.features_selection import remove_noise_columns, remove_correlation
 from sklearn.model_selection import KFold, cross_val_score
 from xgboost import XGBRegressor
-from hyperopt import fmin, tpe, hp, Trials, STATUS_OK
+from hyperopt import fmin, tpe, rand, hp, Trials, STATUS_OK
 from tabulate import tabulate
 
-parser = argparse.ArgumentParser(description='Tune XGBoost hyperparameters with Hyperopt')
+parser = argparse.ArgumentParser(description='Tune XGBoost hyperparameters with Hyperopt (TPE or Random search)')
 parser.add_argument("--train", type=str, default='dataset/train_set.csv')
 parser.add_argument("--target", type=str, default='bioavailability_percent')
 parser.add_argument("--id_col", type=str, default='compound_id')
@@ -16,7 +16,7 @@ parser.add_argument("--categorical", type=str, default='formulation_type')
 parser.add_argument("--n_trials", type=int, default=50, help="number of trials")
 parser.add_argument("--cv_folds", type=int, default=5, help="number of fold")
 parser.add_argument("--random_state", type=int, default=42)
-
+parser.add_argument("--algo", type=str, default='both', choices=['tpe', 'random', 'both'],help="Search algorithm: 'tpe', 'random', or 'both' (runs both and prints 2 tables)")
 
 args = parser.parse_args()
 
@@ -87,39 +87,55 @@ def objective(params):
     return {'loss': rmse, 'status': STATUS_OK}
 
 
-print(f'* Finding hyperparameter ({args.n_trials} trials, {args.cv_folds}-fold CV)...')
-print('\n')
+def run_search(algo_name):
+    # fmin for tpe or random
+    search_algo = tpe.suggest if algo_name == 'tpe' else rand.suggest
+    algo_label = 'TPE' if algo_name == 'tpe' else 'Random search'
 
-trials = Trials()
-best = fmin(
-    fn=objective,
-    space=space,
-    algo=tpe.suggest,
-    max_evals=args.n_trials,
-    trials=trials,
-    rstate=np.random.default_rng(args.random_state),
-)
+    print(f'* Finding hyperparameters with {algo_label} ({args.n_trials} trials, {args.cv_folds}-fold CV)...')
+    print('\n')
 
-# yeah
-best_params = {
-    'n_estimators': n_estimators_choices[best['n_estimators']],
-    'max_depth': max_depth_choices[best['max_depth']],
-    'learning_rate': round(best['learning_rate'], 5),
-    'subsample': round(best['subsample'], 4),
-    'colsample_bytree': round(best['colsample_bytree'], 4),
-    'min_child_weight': min_child_weight_choices[best['min_child_weight']],
-    'gamma': round(best['gamma'], 4),
-    'reg_alpha': round(best['reg_alpha'], 5),
-    'reg_lambda': round(best['reg_lambda'], 5),
-    'random_state': args.random_state,
-    'n_jobs': -1,
-}
+    trials = Trials()
+    best = fmin(
+        fn=objective,
+        space=space,
+        algo=search_algo,
+        max_evals=args.n_trials,
+        trials=trials,
+        rstate=np.random.default_rng(args.random_state),
+    )
 
-best_rmse = min(trials.losses())
+    best_params = {
+        'n_estimators': n_estimators_choices[best['n_estimators']],
+        'max_depth': max_depth_choices[best['max_depth']],
+        'learning_rate': round(best['learning_rate'], 5),
+        'subsample': round(best['subsample'], 4),
+        'colsample_bytree': round(best['colsample_bytree'], 4),
+        'min_child_weight': min_child_weight_choices[best['min_child_weight']],
+        'gamma': round(best['gamma'], 4),
+        'reg_alpha': round(best['reg_alpha'], 5),
+        'reg_lambda': round(best['reg_lambda'], 5),
+        'random_state': args.random_state,
+        'n_jobs': -1,
+    }
 
-print('\n')
-print(f'Best hyperparameters = {best_rmse:.4f}):')
-print(tabulate([(k, v) for k, v in best_params.items()], headers=["Parameter", "Value"], tablefmt="grid"))
-print('\n')
+    best_rmse = min(trials.losses())
+
+    print('\n')
+    print(f'Best hyperparameters via {algo_label} (RMSE cross-validation = {best_rmse:.4f}):')
+    print(tabulate([(k, v) for k, v in best_params.items()], headers=["Parameter", "Value"], tablefmt="grid"))
+    print('\n')
+
+    return algo_label, best_params, best_rmse
 
 
+algos_to_run = ['tpe', 'random'] if args.algo == 'both' else [args.algo]
+results = [run_search(a) for a in algos_to_run]
+
+# Comparision
+if len(results) > 1:
+    print('=' * 60)
+    print('Comparision results:')
+    summary_rows = [(label, f'{rmse:.4f}') for label, _, rmse in results]
+    print(tabulate(summary_rows, headers=["Algorithm", "Best RMSE (CV)"], tablefmt="grid"))
+    print('\n')
